@@ -12,7 +12,7 @@ class Dict(dict):
         except KeyError:
             return self.setdefault(key, mapping(key))
 
-class Cache(object):
+class Repository(object):
     def __init__(self):
         apt_pkg.init()
         cache = apt_pkg.Cache(progress=None)
@@ -51,8 +51,8 @@ class Version(Wrapper):
         }
 
 class Manager(object):
-    def __init__(self, cache):
-        self.__cache = cache
+    def __init__(self, repository):
+        self.__repository = repository
         self.__foreign = frozenset(apt_pkg.get_architectures()[1:])
         self.__packages = Dict()
         self.__versions = Dict()
@@ -73,9 +73,9 @@ class Manager(object):
         # Initialize the candidate version for each package. The
         # information is required in __find_base_versions, so it makes
         # no sense to do it lazily.
-        for p in map(self.wrapped_package, self.__cache.find_packages()):
+        for p in map(self.wrapped_package, self.__repository.find_packages()):
             if p.has_versions:
-                v = self.wrapped_version(self.__cache.find_candidate_version(p.underlying))
+                v = self.wrapped_version(self.__repository.find_candidate_version(p.underlying))
                 p.candidate_version = v
                 v.is_candidate_version = True
         # Automatically rank all base packages.
@@ -107,9 +107,9 @@ class Manager(object):
                     yield version
         raise StopIteration
     def rank_by_name(self, package_name, hint):
-        package = self.__cache.find_package_by_name(package_name)
+        package = self.__repository.find_package_by_name(package_name)
         if package.has_versions:
-            self.rank([ self.wrapped_version(self.__cache.find_candidate_version(package)) ], hint)
+            self.rank([ self.wrapped_version(self.__repository.find_candidate_version(package)) ], hint)
         elif package.has_provides and len(package.provides_list) == 1:
             self.rank([ self.wrapped_version(package.provides_list[0][2]) ], hint)
         else:
@@ -234,7 +234,7 @@ class Manager(object):
         for p in self.__packages.values():
             if p.rank is None:
                 if p.current_state != apt_pkg.CURSTATE_NOT_INSTALLED:
-                    score = self.__cache.is_auto_installed(p.underlying)
+                    score = self.__repository.is_auto_installed(p.underlying)
                     removes.append((p, score))
             elif (p.current_state != apt_pkg.CURSTATE_INSTALLED
                   and p.selected_state != apt_pkg.SELSTATE_INSTALL):
@@ -243,7 +243,7 @@ class Manager(object):
             elif p.current_ver.id != p.candidate_version.id:
                 print('UPGRADE:', self.__format_package(p))
                 self.__dump_dependencies(p)
-            elif self.__cache.is_auto_installed(p.underlying) == (p.hint == 'W'):
+            elif self.__repository.is_auto_installed(p.underlying) == (p.hint == 'W'):
                 print('WISHLIST:', self.__format_package(p))
         for p, score in sorted(removes, key=lambda t: (t[1], t[0].name)):
             print('REMOVE:', self.__format_package(p))
@@ -267,7 +267,7 @@ class Manager(object):
                         print('  {} {}: {}'.format(self.__format_version(version), kind.lower(), self.__format_or_group(or_group)))
     def __format_package(self, package):
         items = []
-        if self.__cache.is_auto_installed(package.underlying):
+        if self.__repository.is_auto_installed(package.underlying):
             items.append('M')
         if package.current_state == apt_pkg.CURSTATE_CONFIG_FILES:
             items.append('c')
@@ -293,7 +293,7 @@ if __name__ == '__main__':
     for pathname in sys.argv[1:]:
         with open(pathname, 'r') as f:
             wishlist.extend(parse(f.read()))
-    manager = Manager(Cache())
+    manager = Manager(Repository())
     for package_name in wishlist:
         manager.rank_by_name(package_name, 'W')
     manager.rank_unresolved()
