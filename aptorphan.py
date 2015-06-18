@@ -5,7 +5,6 @@ import sys
 import apt_pkg
 import ast
 
-
 class Dict(dict):
     def compute_if_absent(self, key, mapping):
         try:
@@ -22,7 +21,6 @@ class Cache(object):
         self.find_candidate_version = depcache.get_candidate_ver
         self.find_package_by_name = lambda name: cache[name]
         self.is_auto_installed = depcache.is_auto_installed
-        self.is_garbage = depcache.is_garbage
 
 class Wrapper(object):
     def __init__(self, underlying):
@@ -271,8 +269,6 @@ class Manager(object):
         items = []
         if self.__cache.is_auto_installed(package.underlying):
             items.append('M')
-        if self.__cache.is_garbage(package.underlying):
-            items.append('G')
         if package.current_state == apt_pkg.CURSTATE_CONFIG_FILES:
             items.append('c')
         elif package.current_state != apt_pkg.CURSTATE_NOT_INSTALLED:
