@@ -147,12 +147,12 @@ class Manager(object):
                     # not resolved
                     i += 1
         return result
-    def __resolve_once(self, targets, use_first):
+    def __resolve_once(self, targets, auto_select_designated):
         candidates = [ t for t in targets if t.is_candidate_version ]
         preferred = [ c for c in candidates if not c.conflicts ]
-        if len(preferred) == 1 or (len(preferred) > 1 and use_first):
+        if len(preferred) == 1 or (len(preferred) > 1 and auto_select_designated):
             return preferred[0]
-        if len(candidates) == 1 or (len(candidates) > 1 and use_first):
+        if len(candidates) == 1 or (len(candidates) > 1 and auto_select_designated):
             return candidates[0]
         return None
     def __resolve_depends(self, version, or_group):
