@@ -91,7 +91,7 @@ class Model(object):
                 result.append(v)
         # sort the versions by name to make the result deterministic
         return map(self.__impl.version, sorted(result, key=lambda v: v.parent_pkg.name))
-    def find_versions_by_priority(self, priority_name):
+    def find_versions_by_priority(self, priority_name, origins, components):
         priority = {
             'required':apt_pkg.PRI_REQUIRED,
             'important':apt_pkg.PRI_IMPORTANT,
@@ -104,8 +104,13 @@ class Model(object):
         for p in self.__impl.repository.find_packages():
             if p.has_versions:
                 v = self.__impl.repository.find_candidate_version(p)
-                if v and (v.priority == priority) and (v.arch not in foreign):
-                    result.append(v)
+                if v is None: continue
+                if v.priority != priority: continue
+                if v.arch in foreign: continue
+                pf = v.file_list[0][0]
+                if origins and pf.origin not in origins: continue
+                if components and pf.component not in components: continue
+                result.append(v)
         # sort the versions by name to make the result deterministic
         return map(self.__impl.version, sorted(result, key=lambda v: v.parent_pkg.name))
     def find_candidate_version_by_name(self, name):
@@ -203,7 +208,7 @@ if __name__ == '__main__':
     # should always be installed in a standard setup.
     implicits = {version:priority
                  for priority in Global.priorities
-                 for version in model.find_versions_by_priority(priority)}
+                 for version in model.find_versions_by_priority(priority, {'Debian'}, None)}
 
     # Inference: Starting with the explicitly and implicitly selected
     # versions, recursively infer further versions that are expected
