@@ -27,6 +27,14 @@ import sys
 
 import apt_pkg
 
+class Dict(dict):
+    def compute_if_absent(self, key, mapping):
+        try:
+            return self[key]
+        except KeyError:
+            pass # unwind exception stack
+        return self.setdefault(key, mapping(key))
+
 class Repository(object):
     def __init__(self):
         apt_pkg.init()
@@ -38,11 +46,17 @@ class Repository(object):
 if __name__ == '__main__':
     repository = Repository()
     priorities = {apt_pkg.PRI_REQUIRED, apt_pkg.PRI_IMPORTANT, apt_pkg.PRI_STANDARD}
-    names = []
+    sections = Dict()
     for p in repository.find_packages():
         v = p.current_ver
         if v and (v.priority not in priorities) and not repository.is_auto_installed(p):
+            pf = v.file_list[0][0]
+            names = sections.compute_if_absent(
+                '{}: {}/{}'.format(pf.origin, v.section, pf.component),
+                lambda section: [])
             names.append(p.get_fullname(pretty=True))
     sys.stdout.write('{\n')
-    sys.stdout.write(''.join(map('    {!r},\n'.format, sorted(names))))
-    sys.stdout.write('}\n')
+    for section, names in sorted(sections.items()):
+        sys.stdout.write('\n    # {}\n'.format(section))
+        sys.stdout.write(''.join(map('    {!r},\n'.format, sorted(names))))
+    sys.stdout.write('\n}\n')
