@@ -236,6 +236,8 @@ if __name__ == '__main__':
         anchors.update(anchors_aux)
         anchors_aux = set(find_parents((expected & actual) - anchors, anchors_aux - implicits.keys() - explicits.keys()))
 
+    candidates = {target for anchor in anchors for kind, targets in anchor.relates(Global.depends) for target in targets if target in missing}
+
     versions = {}
     versions.update(dict.fromkeys(anchors, 'anchor'))
     versions.update(dict.fromkeys(missing, 'missing'))
@@ -298,7 +300,8 @@ digraph "aptorphan" {
         make_edges(version, None, '#f4cae4')
 
     for version in missing:
-        make_raw_node(version.id(), label=version.display_name(), color='#fdcdac')
-        make_edges(version, None, '#fdcdac')
+        color = '#fdcdac' if version in candidates else '#f2f2f2'
+        make_raw_node(version.id(), label=version.display_name(), color=color)
+        make_edges(version, None, color)
 
     write('{}\n', '}')
