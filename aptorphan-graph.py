@@ -91,7 +91,7 @@ class Model(object):
                 result.append(v)
         # sort the versions by name to make the result deterministic
         return map(self.__impl.version, sorted(result, key=lambda v: v.parent_pkg.name))
-    def find_versions_by_priority(self, priority_name, origins, components):
+    def find_versions_by_priority(self, priority_name, origins=None, components=None):
         priority = {
             'required':apt_pkg.PRI_REQUIRED,
             'important':apt_pkg.PRI_IMPORTANT,
@@ -187,36 +187,35 @@ if __name__ == '__main__':
     # Step 1: Find all versions which are expected to be
     # installed. This step completely ignores whether the version is
     # currently installed or not.
+    config = Dict()
 
     # Explicits: All versions directly configured by the user in a
     # configuration file passed to the application. Note that a
     # version might be configured in more than one configuration file.
-    explicits = Dict()
     for pathname in sys.argv[1:]:
         filename = pathname.split('/')[-1]
         with open(pathname, 'r') as f:
             for name in ast.literal_eval(f.read()):
-                explicits.compute_if_absent(name, lambda name: []).append(filename)
+                config.compute_if_absent(name, lambda name: []).append(filename)
 
     # Late initialization of repository, so that syntax errors in the
     # configuration files can be reported immediately.
     model = Model(Repository())
-    explicits = {model.find_candidate_version_by_name(name):filenames
-                 for name, filenames in sorted(explicits.items())}
+    config = Dict((model.find_candidate_version_by_name(name), filenames)
+                  for name, filenames in sorted(config.items()))
 
     # Implicits: All versions with high priority. These versions
     # should always be installed in a standard setup.
-    implicits = {version:priority
-                 for priority in Global.priorities
-                 for version in model.find_versions_by_priority(priority, {'Debian'}, None)}
+    for priority in Global.priorities:
+        for version in model.find_versions_by_priority(priority):
+            config.compute_if_absent(version, lambda version: []).append(priority)
 
     # Inference: Starting with the explicitly and implicitly selected
     # versions, recursively infer further versions that are expected
     # to be installed based on their dependencies.
     resolver = Resolver()
-    for sets in (implicits, explicits):
-        for version in sets:
-            resolver.put(version)
+    for version in config:
+        resolver.put(version)
     expected = set(resolver.resolve())
 
     # Step 2: Find all versions, which are actually installed, and
@@ -236,15 +235,18 @@ if __name__ == '__main__':
                 if any(target in children for target in targets):
                     yield candidate
     anchors = set()
-    anchors_aux = set(find_parents(expected & actual, missing))
+    anchors_aux = set(find_parents(expected & actual, missing - config.keys()))
     while anchors_aux:
         anchors.update(anchors_aux)
-        anchors_aux = set(find_parents((expected & actual) - anchors, anchors_aux - implicits.keys() - explicits.keys()))
+        anchors_aux = set(find_parents((expected & actual) - anchors, anchors_aux - config.keys()))
 
-    candidates = {target for anchor in anchors for kind, targets in anchor.relates(Global.depends) for target in targets if target in missing}
+    guards = {target for anchor in anchors for kind, targets in anchor.relates(Global.depends) for target in targets if target in missing}
+    guards |= missing & config.keys()
+    missing -= guards
 
     versions = {}
     versions.update(dict.fromkeys(anchors, 'anchor'))
+    versions.update(dict.fromkeys(guards, 'guards'))
     versions.update(dict.fromkeys(missing, 'missing'))
     versions.update(dict.fromkeys(spurious, 'spurious'))
 
@@ -260,10 +262,10 @@ if __name__ == '__main__':
 
     def make_edge(source, target, kind, source_id=None, **kwargs):
         arrowhead, style = {
-            'Depends': ('normal', 'solid'),
-            'Recommends': ('empty', 'solid'),
-            'Suggests': ('empty', 'dotted'),
-            }[kind]
+            'Depends':('normal', 'solid'),
+            'Recommends':('empty', 'solid'),
+            'Suggests':('empty', 'dotted'),
+        }[kind]
         if versions[source] != versions[target]:
             style = 'bold'
         make_raw_edge(source_id or source.id(), target.id(), label=kind, arrowhead=arrowhead, style=style, **kwargs)
@@ -291,22 +293,17 @@ digraph "aptorphan" {
 
     make_raw_node(':config', label='config', color='#b3e2cd', shape='ellipse', root='true', fontname='Times-Italic')
 
-    for version in anchors:
-        make_raw_node(version.id(), label=version.display_name(), color='#e6f5c9', shape='ellipse')
-        if version in explicits:
-            for filename in explicits[version]:
-                make_raw_edge(':config', version.id(), color='#b3e2cd', label=filename)
-        if version in implicits:
-            make_raw_edge(':config', version.id(), color='#b3e2cd', label=implicits[version])
-        make_edges(version, Global.depends, '#e6f5c9')
-
-    for version in spurious:
-        make_raw_node(version.id(), label=version.display_name(), color='#f4cae4')
-        make_edges(version, None, '#f4cae4')
-
-    for version in missing:
-        color = '#fdcdac' if version in candidates else '#f2f2f2'
-        make_raw_node(version.id(), label=version.display_name(), color=color)
-        make_edges(version, None, color)
+    for version, kind in versions.items():
+        color, shape, depends = {
+            'anchor':('#e6f5c9', 'ellipse', Global.depends),
+            'guards':('#fdcdac', 'box', None),
+            'missing':('#f2f2f2', 'box', None),
+            'spurious':('#f4cae4', 'box', None),
+        }[kind]
+        make_raw_node(version.id(), label=version.display_name(), color=color, shape=shape)
+        if version in config:
+            for label in config[version]:
+                make_raw_edge(':config', version.id(), color='#b3e2cd', label=label)
+        make_edges(version, depends, color)
 
     write('{}\n', '}')
