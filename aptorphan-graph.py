@@ -262,8 +262,13 @@ if __name__ == '__main__':
 
     def make_edge(source, target, kind, source_id=None, **kwargs):
         arrowhead, style = {
+            'Breaks':('diamond', 'dashed'),
+            'Conflicts':('diamond', 'dashed'),
             'Depends':('normal', 'solid'),
+            'Enhances':('empty', 'dotted'),
+            'PreDepends':('normal', 'solid'),
             'Recommends':('empty', 'solid'),
+            'Replaces':('diamond', 'dashed'),
             'Suggests':('empty', 'dotted'),
         }[kind]
         if versions[source] != versions[target]:
